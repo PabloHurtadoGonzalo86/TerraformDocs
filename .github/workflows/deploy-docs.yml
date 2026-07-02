@@ -38,7 +38,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Build site (strict mode: any warning fails the build)
+      - name: "Build site (strict mode: any warning fails the build)"
         run: mkdocs build --strict --verbose
 
       - name: Disable Jekyll processing
