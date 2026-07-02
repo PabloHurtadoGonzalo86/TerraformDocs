@@ -5,9 +5,10 @@
     "s3_last_seen": "2026-07-02"
   },
   "aws_provider": {
-    "last_checked_version": "6.0.0"
+    "last_checked_version": "6.53.0"
   },
+  "last_run_at": "2026-07-02T20:35:28Z",
   "terraform": {
-    "last_checked_version": "1.11.0"
+    "last_checked_version": "1.15.7"
   }
 }
