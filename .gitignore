@@ -9,3 +9,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+
+# Salidas generadas por el vigia de obsolescencia (no versionadas;
+# freshness-state.json SI se versiona, es el unico estado persistente)
+freshness-findings.json
+hcl-validate-findings.json
+issue_body.md
+issue_title.txt

@@ -1,0 +1,13 @@
+{
+  "aws_docs": {
+    "dynamodb_last_seen": "2026-07-02",
+    "iam_last_seen": "2026-07-02",
+    "s3_last_seen": "2026-07-02"
+  },
+  "aws_provider": {
+    "last_checked_version": "6.0.0"
+  },
+  "terraform": {
+    "last_checked_version": "1.11.0"
+  }
+}
