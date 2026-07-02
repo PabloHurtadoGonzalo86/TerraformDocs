@@ -1,0 +1,95 @@
+site_name: "Terraform Basics · Manual en español"
+site_description: >-
+  Apuntes completos y originales del curso Terraform Basics Training Course (KodeKloud),
+  verificados contra la documentación oficial de Terraform y AWS.
+site_author: Pablo Hurtado Gonzalo
+site_url: https://pablohurtadogonzalo86.github.io/TerraformDocs/
+
+repo_name: PabloHurtadoGonzalo86/TerraformDocs
+repo_url: https://github.com/PabloHurtadoGonzalo86/TerraformDocs
+edit_uri: edit/main/manual-terraform-basics-training-course/
+
+docs_dir: manual-terraform-basics-training-course
+site_dir: site
+
+copyright: Copyright &copy; Pablo Hurtado Gonzalo
+
+theme:
+  name: material
+  language: es
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Cambiar a modo oscuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Cambiar a modo claro
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+
+markdown_extensions:
+  - admonition
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+      title: En esta página
+
+plugins:
+  - search:
+      lang: es
+
+validation:
+  nav:
+    omitted_files: warn
+    not_found: warn
+    absolute_links: warn
+  links:
+    not_found: warn
+    anchors: warn
+    absolute_links: info
+    unrecognized_links: warn
+
+nav:
+  - Inicio: README.md
+  - "1–2 · Introducción e Infrastructure as Code": 01-intro-y-iac.md
+  - "3 · Primeros pasos con Terraform": 02-primeros-pasos.md
+  - "4 · Fundamentos de Terraform (providers)": 03-basics-providers.md
+  - "4 · Fundamentos de Terraform (variables, dependencias, outputs)": 04-basics-variables.md
+  - "5 · El estado de Terraform": 05-estado.md
+  - "6 · Trabajando con Terraform (comandos, lifecycle, data sources)": 06-working-comandos.md
+  - "6 · Trabajando con Terraform (meta-argumentos, count, for_each)": 07-working-meta.md
+  - "7 · Terraform con AWS (IAM)": 08-aws-iam.md
+  - "7 · Terraform con AWS (S3, DynamoDB)": 09-aws-s3-dynamo.md
+  - "8 · Estado remoto": 10-remote-state.md
+  - "9 · Provisioners y EC2": 11-provisioners-ec2.md
+  - "10 · Taint, debugging e import": 12-taint-debug-import.md
+  - "11 · Módulos de Terraform": 13-modulos.md
+  - "12 · Funciones, condicionales y workspaces": 14-funciones-workspaces.md
+  - "13 · Conclusión y kit de recursos": 15-conclusion.md

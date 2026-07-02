@@ -1,0 +1,11 @@
+# MkDocs build output
+site/
+
+# Local Claude Code tooling (not part of the project)
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
