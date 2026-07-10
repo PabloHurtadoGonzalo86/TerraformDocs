@@ -20,6 +20,14 @@ Diseño de seguridad (por que un cambio se descarta):
   5. La URL citada debe responder (no se acepta una cita que no resuelve).
 Si algo no supera todo esto, no se aplica: se dice explicitamente por que en
 el propio issue, en vez de fingir que se ha resuelto.
+Autenticacion: usa el CLI de Claude Code (paquete npm @anthropic-ai/claude-code),
+autenticado con CLAUDE_CODE_OAUTH_TOKEN (token de suscripcion Pro/Max generado con
+`claude setup-token`, el mismo que usa .github/workflows/claude.yml) -- nunca
+ANTHROPIC_API_KEY ni facturacion por API. El CLI se invoca con --tools "" (sin
+acceso a herramientas: ni Bash ni edicion de ficheros, respuesta de solo texto/JSON
+estructurado, igual que una llamada de mensajes pura) y --json-schema para forzar
+la forma de la respuesta. Ver developer docs oficiales: code.claude.com/docs/en/cli-reference
+y code.claude.com/docs/en/headless (seccion "Get structured output").
 """
 import glob
 import json
@@ -33,10 +41,9 @@ import urllib.request
 
 REPO_ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 DOCS_DIR = os.path.join(REPO_ROOT, "manual-terraform-basics-training-course")
-API_URL = "https://api.anthropic.com/v1/messages"
-API_VERSION = "2023-06-01"
 DRAFT_MODEL = "claude-sonnet-5"
 REVIEW_MODEL = "claude-opus-4-8"
+CLI_MAX_TURNS = 6
 MAX_CANDIDATES = 8
 UA = "TerraformDocs-auto-resolve (+https://github.com/PabloHurtadoGonzalo86/TerraformDocs)"
 
@@ -115,42 +122,92 @@ def log(msg):
     print(msg, file=sys.stderr, flush=True)
 
 
-def call_claude(system, user_text, schema, model, max_tokens=3000):
-    api_key = os.environ["ANTHROPIC_API_KEY"]
-    body = {
-        "model": model,
-        "max_tokens": max_tokens,
-        "system": system,
-        "messages": [{"role": "user", "content": user_text}],
-        "output_config": {"format": {"type": "json_schema", "schema": schema}},
-    }
-    data = json.dumps(body).encode("utf-8")
+def call_claude(system, user_text, schema, model):
+    """Invoca el CLI de Claude Code (no la API REST) en modo no interactivo,
+    sin herramientas, pidiendo salida validada contra un JSON Schema.
+
+    - stdin, no argv: el texto (cita + capitulo) puede pesar decenas de KB;
+      pasarlo como argumento de linea de comandos falla en algunos sistemas
+      (limite de longitud de argv). Verificado: por stdin funciona sin limite
+      practico.
+    - --tools "": sin Bash ni edicion de ficheros, la unica salida posible es
+      la respuesta de texto/JSON, igual que la llamada de mensajes que
+      sustituye.
+    - --json-schema + --output-format json: la respuesta valida contra
+      `schema` llega en el campo "structured_output" del JSON de salida.
+    - NUNCA --bare: ese modo omite la lectura de OAuth/keychain y exige
+      ANTHROPIC_API_KEY, que este pipeline no usa.
+    """
+    if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
+        raise RuntimeError("CLAUDE_CODE_OAUTH_TOKEN no esta definido en el entorno.")
+
+    cmd = [
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--tools",
+        "",
+        "--max-turns",
+        str(CLI_MAX_TURNS),
+        "--model",
+        model,
+        "--system-prompt",
+        system,
+        "--json-schema",
+        json.dumps(schema),
+        "--no-session-persistence",
+    ]
+
     last_err = None
-    for attempt in range(5):
-        req = urllib.request.Request(
-            API_URL,
-            data=data,
-            method="POST",
-            headers={
-                "content-type": "application/json",
-                "x-api-key": api_key,
-                "anthropic-version": API_VERSION,
-            },
-        )
+    for attempt in range(3):
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-                text = payload["content"][0]["text"]
-                return json.loads(text)
-        except urllib.error.HTTPError as e:
-            body_txt = e.read().decode("utf-8", errors="replace")
-            if e.code in (429, 500, 529) and attempt < 4:
-                wait = 5 * (2**attempt)
-                log(f"HTTP {e.code} llamando a Claude, reintentando en {wait}s: {body_txt[:300]}")
+            proc = subprocess.run(
+                cmd,
+                input=user_text,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=300,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                "No se encontro el binario 'claude'. Instalalo con: npm install -g @anthropic-ai/claude-code"
+            ) from exc
+        except subprocess.TimeoutExpired:
+            last_err = RuntimeError("Timeout esperando al CLI de Claude Code (300s).")
+            log(str(last_err))
+            continue
+
+        stdout = (proc.stdout or "").strip()
+        payload = None
+        if stdout:
+            try:
+                payload = json.loads(stdout)
+            except json.JSONDecodeError:
+                payload = None
+
+        if proc.returncode != 0 or payload is None:
+            detail = payload if payload is not None else stdout or (proc.stderr or "").strip()
+            last_err = RuntimeError(f"claude CLI fallo (exit {proc.returncode}): {str(detail)[:1500]}")
+            if attempt < 2:
+                wait = 10 * (2**attempt)
+                log(f"{last_err} — reintentando en {wait}s")
                 time.sleep(wait)
-                last_err = RuntimeError(f"{e.code}: {body_txt}")
                 continue
-            raise RuntimeError(f"Error no recuperable llamando a Claude ({e.code}): {body_txt}") from e
+            raise last_err
+
+        if payload.get("is_error"):
+            raise RuntimeError(
+                f"claude CLI devolvio error ({payload.get('subtype')}): "
+                f"{payload.get('errors') or payload.get('result')}"
+            )
+
+        if "structured_output" not in payload:
+            raise RuntimeError(f"Respuesta del CLI sin structured_output: {json.dumps(payload)[:1000]}")
+
+        return payload["structured_output"]
+
     raise last_err
 
 
@@ -325,11 +382,12 @@ def write_contents(new_contents):
 
 
 def main():
-    if not os.environ.get("ANTHROPIC_API_KEY"):
+    if not os.environ.get("CLAUDE_CODE_OAUTH_TOKEN"):
         log(
-            "ANTHROPIC_API_KEY no configurada: la resolucion automatica se omite. "
+            "CLAUDE_CODE_OAUTH_TOKEN no configurado: la resolucion automatica se omite. "
             "El issue de obsolescencia sigue abierto para revision manual. "
-            "Configura el secreto con: gh secret set ANTHROPIC_API_KEY --repo PabloHurtadoGonzalo86/TerraformDocs"
+            "Genera el token con `claude setup-token` y guardalo con: "
+            "gh secret set CLAUDE_CODE_OAUTH_TOKEN --repo PabloHurtadoGonzalo86/TerraformDocs"
         )
         _write_outputs(has_pr=False, has_comment=False, comment_text="", pr_title="", pr_body="", changed_files=[])
         return 0

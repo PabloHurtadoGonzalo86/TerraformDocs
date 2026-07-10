@@ -159,6 +159,9 @@ jobs:
         run: npm ci
         working-directory: docs-site
 
+      - name: Instalar el CLI de Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
       - name: Descargar hallazgos de changelog
         uses: actions/download-artifact@v8
         with:
@@ -167,7 +170,7 @@ jobs:
       - name: "Redactar, verificar y (si procede) proponer el parche"
         id: draft
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           TRACKING_ISSUE_NUMBER: ${{ needs.report.outputs.issue_number }}
         run: python .github/scripts/draft_and_verify.py
 

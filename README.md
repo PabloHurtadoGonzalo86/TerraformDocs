@@ -86,11 +86,16 @@ lo marca `auto-fix-vetoed` y nunca lo fusiona solo. Esto da una ventana real par
 el PR si algo no convence, sin necesidad de revisar activamente cada uno — el mismo patrón que usan
 Dependabot/Renovate para auto-merge, adaptado a contenido en prosa en vez de a un número de versión.
 
-### Poner en marcha la resolución automática
+### Autenticación de la resolución automática
 
-El único paso manual que falta es crear un `ANTHROPIC_API_KEY` y añadirlo como secreto del
-repositorio (Settings → Secrets and variables → Actions). Sin ese secreto, el vigía sigue abriendo
-issues con los hallazgos, simplemente no intenta resolverlos por su cuenta.
+`draft_and_verify.py` no usa la API de Anthropic facturada por token (`ANTHROPIC_API_KEY`):
+invoca el [CLI de Claude Code](https://code.claude.com/docs/en/cli-reference) en modo no
+interactivo (`claude -p --tools "" --json-schema ...`), autenticado con el secreto
+`CLAUDE_CODE_OAUTH_TOKEN` — el token de la suscripción Pro/Max generado con `claude setup-token`,
+el mismo que usa [`claude.yml`](.github/workflows/claude.yml). Con ese secreto ya configurado en
+el repositorio, la resolución automática está activa sin ningún paso manual adicional. Si el
+secreto no estuviera, el vigía sigue abriendo issues con los hallazgos igualmente — simplemente no
+intenta resolverlos por su cuenta (falla en modo seguro, no falla el workflow).
 
 ## Cómo se elaboró el manual
 
