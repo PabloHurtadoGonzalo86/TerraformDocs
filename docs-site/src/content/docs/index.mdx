@@ -1,0 +1,48 @@
+---
+title: Terraform Basics Training Course
+description: Manual completo en español del curso Terraform Basics Training Course (KodeKloud), verificado contra la documentación oficial de Terraform y AWS.
+template: splash
+hero:
+  tagline: Apuntes 100% originales del curso Terraform Basics Training Course de KodeKloud — explicados a fondo, con laboratorios propios y verificados contra la documentación oficial de Terraform y AWS.
+  actions:
+    - text: Empezar por el Módulo 1
+      link: /manual/01-introduccion/
+      icon: right-arrow
+    - text: Ver el repositorio en GitHub
+      link: https://github.com/PabloHurtadoGonzalo86/TerraformDocs
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+## Cómo está organizado el manual
+
+Sigue el mismo orden que el curso original, módulo a módulo. Cada página incluye teoría explicada desde cero, ejemplos de código HCL completos, errores comunes, buenas prácticas, un laboratorio práctico y preguntas de repaso.
+
+<CardGrid stagger>
+	<Card title="Fundamentos" icon="rocket">
+		Módulos 1 a 6: qué es Infrastructure as Code, instalación, HCL, providers,
+		variables, el estado de Terraform y los comandos de uso diario.
+	</Card>
+	<Card title="Terraform con AWS" icon="cloud-download">
+		Módulo 7: IAM, S3 y DynamoDB gestionados con Terraform, desde la creación
+		de la cuenta de AWS hasta las políticas de permisos.
+	</Card>
+	<Card title="Estado remoto y EC2" icon="setting">
+		Módulos 8 y 9: backends remotos con S3, bloqueo de estado, instancias EC2
+		y provisioners.
+	</Card>
+	<Card title="Funcionalidades avanzadas" icon="puzzle">
+		Módulos 10 a 13: import, taint, debugging, módulos reutilizables,
+		funciones, condicionales, workspaces y el kit de recursos final.
+	</Card>
+</CardGrid>
+
+## Simbología usada en el manual
+
+- **⭐ Ideas clave y buenas prácticas** — conceptos que conviene memorizar o aplicar siempre.
+- **⚠️ Errores comunes** — fallos frecuentes al aprender o usar Terraform, y cómo evitarlos.
+- **🧪 Laboratorio** — ejercicio práctico para reforzar lo aprendido en cada lección.
+- **❓ Preguntas de repaso** — preguntas para autoevaluarte antes de avanzar.
+- **🔄 Actualización** — puntos donde el contenido actual difiere de lo enseñado originalmente en el curso, verificado contra la documentación oficial.
