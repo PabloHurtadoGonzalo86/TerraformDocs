@@ -4,8 +4,10 @@ on:
   push:
     branches: [main]
     paths:
+      - "manual-terraform-basics-training-course/**"
       - "docs-site/**"
       - ".github/workflows/deploy-docs.yml"
+      - ".github/scripts/sync_manual_to_docs_site.py"
   workflow_dispatch:
 
 permissions:
@@ -23,6 +25,15 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Sync manual content into the Starlight collection
+        run: python3 .github/scripts/sync_manual_to_docs_site.py
+
       - name: Install, build, and upload the site
         uses: withastro/action@v6
         with:
@@ -37,4 +48,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,85 @@
+name: Ventana de veto y fusion de auto-fixes
+
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: merge-sweeper
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: "Revisar PRs auto-fix pendientes y fusionar los que superen las 48h sin veto humano"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          LABEL="auto-fix-pending"
+          BOT="github-actions[bot]"
+          NOW=$(date -u +%s)
+          MIN_AGE_SECONDS=$((48 * 3600))
+
+          PRS=$(gh pr list --label "$LABEL" --state open --json number,createdAt)
+          COUNT=$(echo "$PRS" | jq 'length')
+          echo "PRs auto-fix abiertos: $COUNT"
+
+          echo "$PRS" | jq -c '.[]' | while read -r pr; do
+            NUM=$(echo "$pr" | jq -r '.number')
+            CREATED=$(echo "$pr" | jq -r '.createdAt')
+            CREATED_TS=$(date -u -d "$CREATED" +%s)
+            AGE=$((NOW - CREATED_TS))
+
+            if [ "$AGE" -lt "$MIN_AGE_SECONDS" ]; then
+              echo "PR #$NUM: aun dentro de la ventana de veto de 48h ($((AGE / 3600))h transcurridas), se omite."
+              continue
+            fi
+
+            DETAIL=$(gh pr view "$NUM" --json author,commits,comments,reviews,mergeable,state)
+            AUTHOR=$(echo "$DETAIL" | jq -r '.author.login')
+            COMMIT_COUNT=$(echo "$DETAIL" | jq '.commits | length')
+            NON_BOT_COMMENTS=$(echo "$DETAIL" | jq --arg bot "$BOT" '[.comments[] | select(.author.login != $bot)] | length')
+            REVIEW_COUNT=$(echo "$DETAIL" | jq '.reviews | length')
+            MERGEABLE=$(echo "$DETAIL" | jq -r '.mergeable')
+
+            if [ "$AUTHOR" != "$BOT" ]; then
+              echo "PR #$NUM: no fue abierto por el bot ($AUTHOR), se omite por seguridad."
+              continue
+            fi
+            if [ "$COMMIT_COUNT" -ne 1 ]; then
+              echo "PR #$NUM: tiene $COMMIT_COUNT commits (se esperaba 1) -> alguien ha tocado la rama, VETADO. No se fusiona."
+              gh pr comment "$NUM" --body "Vetado automaticamente: se detectaron commits adicionales a los del bot, no se fusiona sin revision humana." || true
+              gh pr edit "$NUM" --remove-label "$LABEL" --add-label "auto-fix-vetoed" || true
+              continue
+            fi
+            if [ "$NON_BOT_COMMENTS" -gt 0 ]; then
+              echo "PR #$NUM: tiene comentarios humanos -> VETADO. No se fusiona."
+              gh pr edit "$NUM" --remove-label "$LABEL" --add-label "auto-fix-vetoed" || true
+              continue
+            fi
+            if [ "$REVIEW_COUNT" -gt 0 ]; then
+              echo "PR #$NUM: tiene revisiones -> VETADO. No se fusiona."
+              gh pr edit "$NUM" --remove-label "$LABEL" --add-label "auto-fix-vetoed" || true
+              continue
+            fi
+            if [ "$MERGEABLE" != "MERGEABLE" ]; then
+              echo "PR #$NUM: estado mergeable=$MERGEABLE, no se puede fusionar limpiamente, se omite por ahora."
+              continue
+            fi
+
+            echo "PR #$NUM: >=48h, sin rastro humano, mergeable -> fusionando."
+            gh pr merge "$NUM" --squash --delete-branch \
+              --subject "$(gh pr view "$NUM" --json title --jq .title)" \
+              --body "Fusionado automaticamente tras 48h sin veto humano. Verificado previamente con build + terraform validate + revision adversarial."
+          done

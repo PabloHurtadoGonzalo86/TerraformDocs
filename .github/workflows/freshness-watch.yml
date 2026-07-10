@@ -1,0 +1,208 @@
+name: Vigia de obsolescencia (Terraform y AWS)
+
+on:
+  schedule:
+    - cron: "17 6 1 * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: freshness-watch
+  cancel-in-progress: false
+
+jobs:
+  changelog-watch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: "Comprobar changelog oficial de Terraform y AWS"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python .github/scripts/check_freshness.py
+
+      - name: Subir hallazgos como artefacto
+        uses: actions/upload-artifact@v7
+        with:
+          name: freshness-findings
+          path: |
+            freshness-findings.json
+            freshness-state.json
+          if-no-files-found: error
+
+  hcl-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Instalar Terraform (version estable actual)
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: "Validar bloques HCL completos del manual contra Terraform real"
+        run: python .github/scripts/extract_and_validate_hcl.py terraform
+
+      - name: Subir resultado de validacion como artefacto
+        uses: actions/upload-artifact@v7
+        with:
+          name: hcl-validate-findings
+          path: hcl-validate-findings.json
+          if-no-files-found: error
+
+  report:
+    needs: [changelog-watch, hcl-validate]
+    if: always()
+    runs-on: ubuntu-latest
+    outputs:
+      has_news: ${{ steps.report.outputs.has_news }}
+      issue_number: ${{ steps.issue.outputs.issue_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Descargar hallazgos de changelog
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: freshness-findings
+
+      - name: Descargar hallazgos de validacion HCL
+        uses: actions/download-artifact@v8
+        continue-on-error: true
+        with:
+          name: hcl-validate-findings
+
+      - name: "Generar informe combinado (issue_body.md)"
+        id: report
+        run: python .github/scripts/report_findings.py
+
+      - name: "Crear o actualizar issue de seguimiento"
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HAS_NEWS: ${{ steps.report.outputs.has_news }}
+        run: |
+          set -e
+          LABEL="obsolescencia"
+          gh label create "$LABEL" --color FBCA04 \
+            --description "Posible desactualizacion frente a Terraform/AWS oficiales" 2>/dev/null || true
+
+          EXISTING=$(gh issue list --label "$LABEL" --state open --json number --jq '.[0].number // empty')
+
+          if [ "$HAS_NEWS" != "true" ]; then
+            echo "Sin novedades relevantes en esta comprobacion, no se abre issue."
+            exit 0
+          fi
+
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body-file issue_body.md
+            echo "Actualizado issue #$EXISTING"
+            echo "issue_number=$EXISTING" >> "$GITHUB_OUTPUT"
+          else
+            URL=$(gh issue create --title "$(cat issue_title.txt)" --label "$LABEL" --body-file issue_body.md)
+            NUM="${URL##*/}"
+            echo "Creado issue #$NUM"
+            echo "issue_number=$NUM" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "Guardar estado (commit) para la proxima comprobacion"
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add freshness-state.json
+          if git diff --cached --quiet; then
+            echo "Sin cambios de estado que commitear."
+          else
+            git commit -m "chore: actualiza estado del vigia de obsolescencia [skip ci]"
+            git push
+          fi
+
+  draft-and-verify:
+    needs: report
+    if: needs.report.outputs.has_news == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      - name: Instalar Terraform (version estable actual)
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Instalar dependencias de docs-site (para verificar el build tras el parche)
+        run: npm ci
+        working-directory: docs-site
+
+      - name: Descargar hallazgos de changelog
+        uses: actions/download-artifact@v8
+        with:
+          name: freshness-findings
+
+      - name: "Redactar, verificar y (si procede) proponer el parche"
+        id: draft
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TRACKING_ISSUE_NUMBER: ${{ needs.report.outputs.issue_number }}
+        run: python .github/scripts/draft_and_verify.py
+
+      - name: "Comentar/cerrar el issue de seguimiento"
+        if: steps.draft.outputs.has_comment == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ISSUE_NUMBER: ${{ needs.report.outputs.issue_number }}
+        run: |
+          set -e
+          gh issue comment "$ISSUE_NUMBER" --body-file issue_comment.md
+          if [ "${{ steps.draft.outputs.close_issue }}" = "true" ]; then
+            gh issue close "$ISSUE_NUMBER" --comment "Resuelto automaticamente: ningun hallazgo de esta comprobacion requeria cambios en el manual."
+          fi
+
+      - name: "Abrir PR con el parche verificado"
+        if: steps.draft.outputs.has_pr == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHANGED_FILES: ${{ steps.draft.outputs.changed_files }}
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="auto-fix/freshness-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
+
+          IFS=',' read -ra FILES <<< "$CHANGED_FILES"
+          for f in "${FILES[@]}"; do
+            git add "manual-terraform-basics-training-course/$f"
+          done
+
+          git commit -F pr_title.txt
+          git push origin "$BRANCH"
+          gh label create "auto-fix-pending" --color 0E8A16 \
+            --description "PR verificado en espera de la ventana de veto de 48h" 2>/dev/null || true
+          gh pr create --title "$(cat pr_title.txt)" --body-file pr_body.md \
+            --label "auto-fix-pending" --base main --head "$BRANCH"

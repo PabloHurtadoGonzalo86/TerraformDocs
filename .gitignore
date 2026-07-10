@@ -1,0 +1,19 @@
+# Local Claude Code tooling (not part of the project)
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Salidas generadas por el vigia de obsolescencia (no versionadas;
+# freshness-state.json SI se versiona, es el unico estado persistente)
+freshness-findings.json
+hcl-validate-findings.json
+hcl-validate-post-patch.json
+issue_body.md
+issue_title.txt
+issue_comment.md
+pr_body.md
+pr_title.txt
